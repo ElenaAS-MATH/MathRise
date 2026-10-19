@@ -938,5 +938,322 @@ el("config-btn").addEventListener("click", () => showScreen("start"));
    ========================================================= */
 renderLeaderboard();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     ENVIAMENT DE RESULTATS A UN FORMULARI DE GOOGLE
+     Afegit el 2026. Tota la configuració és a la constant CFG.
+     Cap dada surt d'aquesta pàgina fins que l'alumne/a prem «Enviar».
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+'use strict';
+
+/* ─── 1. CONFIGURACIÓ ────────────────────────────────────────────────
+   Omple FORM_ID i els quatre ENTRY seguint INSTRUCCIONS.md.
+   SALT ha de ser EXACTAMENT el mateix a les quatre aplicacions
+   i a verificador.html.                                              */
+var CFG = {
+  FORM_ID : 'POSA_AQUI_EL_FORM_ID',
+  ENTRY   : {
+    activitat : 'entry.122613874',
+    grup      : 'entry.1788505209',
+    resum     : 'entry.856085681',
+    codi      : 'entry.1674195981'
+  },
+  SALT    : 'NIKITA',
+  APP     : 'mathrise',
+  APP_NOM : 'MathRise',
+  VERSIO  : '1.0',
+  ACCENT  : '#E8C547',
+  ACCENT_TEXT : '#142720',
+  ANCLA   : '.over-actions',      /* selector on s'insereix el botó, o null = flotant */
+  ETIQUETA: 'Enviar els resultats'
+};
+
+/* ─── 2. UTILITATS ───────────────────────────────────────────────── */
+var T0 = Date.now();
+
+function param(n){
+  try { return new URLSearchParams(location.search).get(n) || ''; }
+  catch(e){ return ''; }
+}
+function llegeixGrup(){
+  var g = param('grup');
+  if (g) return g;
+  try { return localStorage.getItem('eas_grup') || ''; } catch(e){ return ''; }
+}
+function desaGrup(g){ try { localStorage.setItem('eas_grup', g); } catch(e){} }
+
+function b64(s){
+  var by = new TextEncoder().encode(s), bin = '';
+  for (var i = 0; i < by.length; i++) bin += String.fromCharCode(by[i]);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+/* FNV-1a de 32 bits: no és criptografia, és un dígit de control. */
+function fnv(s){
+  var h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++){
+    h ^= s.charCodeAt(i);
+    h = (h + ((h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24))) >>> 0;
+  }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+function codifica(obj){
+  var j = JSON.stringify(obj);
+  return 'EAS1.' + b64(j) + '.' + fnv(j + CFG.SALT);
+}
+function durada(){ return Math.max(1, Math.round((Date.now() - T0) / 60000)); }
+function configurat(){ return CFG.FORM_ID.indexOf('POSA_AQUI') === -1; }
+
+/* ─── 3. RECOLLIDA DE DADES (específica de cada aplicació) ───────── */
+function recull(){
+  var punts = 0, ronda = 1, millor = 0, nivell = '', estricte = false;
+  try {
+    if (typeof state !== 'undefined'){
+      punts  = state.score || 0;
+      ronda  = (state.roundIndex || 0) + 1;
+      estricte = !!state.strict;
+      if (state.config && typeof PRESETS !== 'undefined' && PRESETS[state.config.presetIndex])
+        nivell = PRESETS[state.config.presetIndex].name;
+    }
+  } catch(e){}
+  var fe = document.getElementById('final-score');
+  if (!punts && fe) punts = parseInt(fe.textContent,10) || 0;
+  try { millor = Number(localStorage.getItem('mathrise_bestscore') || 0); } catch(e){}
+  return {
+    resum : 'Puntuaci\u00f3 ' + punts + ' \u00b7 ronda ' + ronda
+          + (nivell ? ' \u00b7 ' + nivell : '')
+          + (estricte ? ' \u00b7 mode estricte' : '')
+          + ' \u00b7 ' + durada() + ' min',
+    dades : { punts:punts, ronda:ronda, nivell:nivell, estricte:estricte, millorDispositiu:millor }
+  };
+}
+
+/* ─── 4. ESTILS ──────────────────────────────────────────────────── */
+var CSS = ''
++ '.eas-btn{font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;'
++ 'border:0;border-radius:10px;padding:.6rem 1rem;background:' + CFG.ACCENT + ';'
++ 'color:' + CFG.ACCENT_TEXT + ';line-height:1.2}'
++ '.eas-btn:focus-visible{outline:3px solid ' + CFG.ACCENT + ';outline-offset:3px}'
++ '.eas-btn.eas-flota{position:fixed;right:18px;bottom:18px;z-index:9998;'
++ 'box-shadow:0 6px 20px rgba(0,0,0,.28)}'
++ '.eas-btn.eas-sec{background:transparent;color:#1d2432;'
++ 'box-shadow:inset 0 0 0 1.5px #c3cad6}'
++ '.eas-fons{position:fixed;inset:0;z-index:9999;background:rgba(10,14,20,.55);'
++ 'display:flex;align-items:center;justify-content:center;padding:18px;'
++ 'font-family:system-ui,-apple-system,"Segoe UI",sans-serif}'
++ '.eas-caixa{background:#fff;color:#1d2432;max-width:34rem;width:100%;'
++ 'max-height:90vh;overflow:auto;border-radius:14px;padding:22px 22px 18px;'
++ 'box-shadow:0 18px 50px rgba(0,0,0,.35)}'
++ '.eas-caixa h2{margin:0 0 .2rem;font-size:1.15rem;color:' + CFG.ACCENT + '}'
++ '.eas-caixa p{margin:.45rem 0;font-size:.88rem;line-height:1.5;color:#3d4657}'
++ '.eas-caixa label{display:block;font-size:.82rem;font-weight:600;'
++ 'margin:.9rem 0 .25rem;color:#1d2432}'
++ '.eas-caixa input,.eas-caixa textarea{font:inherit;font-size:.88rem;width:100%;'
++ 'box-sizing:border-box;border:1.5px solid #c3cad6;border-radius:8px;padding:.5rem .6rem;'
++ 'background:#fff;color:#1d2432}'
++ '.eas-caixa textarea{resize:vertical;min-height:4.6rem;font-family:ui-monospace,'
++ 'SFMono-Regular,Menlo,monospace;font-size:.72rem;line-height:1.45;background:#f6f8fb}'
++ '.eas-resum{background:#f3f6fa;border-left:4px solid ' + CFG.ACCENT + ';'
++ 'border-radius:0 8px 8px 0;padding:.7rem .85rem;margin:.9rem 0 0;'
++ 'font-size:.9rem;line-height:1.55}'
++ '.eas-acc{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.1rem}'
++ '.eas-avis{background:#fff4e2;border-left:4px solid #c67a10;border-radius:0 8px 8px 0;'
++ 'padding:.6rem .8rem;font-size:.82rem;margin-top:.9rem}'
++ '.eas-peu{font-size:.75rem;color:#6b7383;margin-top:.9rem}'
++ '@media (prefers-reduced-motion:no-preference){.eas-caixa{animation:eas-puja .18s ease-out}}'
++ '@keyframes eas-puja{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}';
+
+function injectaCSS(){
+  if (document.getElementById('eas-css')) return;
+  var s = document.createElement('style');
+  s.id = 'eas-css'; s.textContent = CSS;
+  document.head.appendChild(s);
+}
+
+/* ─── 5. FINESTRA D'ENVIAMENT ────────────────────────────────────── */
+var fons = null, darrerFocus = null;
+
+function tanca(){
+  if (!fons) return;
+  fons.remove(); fons = null;
+  if (darrerFocus) darrerFocus.focus();
+}
+
+function obre(){
+  injectaCSS();
+  darrerFocus = document.activeElement;
+
+  var dades  = recull();
+  var moment = new Date();
+  var carrega = {
+    v      : 'EAS1',
+    app    : CFG.APP,
+    versio : CFG.VERSIO,
+    grup   : llegeixGrup(),
+    inici  : new Date(T0).toISOString(),
+    fi     : moment.toISOString(),
+    minuts : durada(),
+    d      : dades.dades
+  };
+
+  fons = document.createElement('div');
+  fons.className = 'eas-fons';
+  fons.setAttribute('role','dialog');
+  fons.setAttribute('aria-modal','true');
+  fons.setAttribute('aria-label','Enviar els resultats');
+
+  var caixa = document.createElement('div');
+  caixa.className = 'eas-caixa';
+  fons.appendChild(caixa);
+
+  var h = document.createElement('h2');
+  h.textContent = 'Enviar els resultats';
+  caixa.appendChild(h);
+
+  var p1 = document.createElement('p');
+  p1.textContent = 'El formulari recull el teu correu del centre automàticament: '
+    + 'no cal que hi escriguis el nom. Revisa el resum abans d\u2019enviar-lo.';
+  caixa.appendChild(p1);
+
+  var resum = document.createElement('div');
+  resum.className = 'eas-resum';
+  resum.textContent = dades.resum;
+  caixa.appendChild(resum);
+
+  var lg = document.createElement('label');
+  lg.textContent = 'Grup';
+  lg.setAttribute('for','eas-grup');
+  caixa.appendChild(lg);
+  var ig = document.createElement('input');
+  ig.id = 'eas-grup'; ig.type = 'text';
+  ig.placeholder = 'p. ex. 2n B';
+  ig.value = llegeixGrup();
+  caixa.appendChild(ig);
+
+  var lc = document.createElement('label');
+  lc.textContent = 'Codi de verificació';
+  lc.setAttribute('for','eas-codi');
+  caixa.appendChild(lc);
+  var tc = document.createElement('textarea');
+  tc.id = 'eas-codi'; tc.readOnly = true;
+  tc.setAttribute('aria-describedby','eas-peu');
+  caixa.appendChild(tc);
+
+  function refresca(){
+    carrega.grup = ig.value.trim();
+    tc.value = codifica(carrega);
+  }
+  refresca();
+  ig.addEventListener('input', refresca);
+
+  var acc = document.createElement('div');
+  acc.className = 'eas-acc';
+  caixa.appendChild(acc);
+
+  var bForm = document.createElement('button');
+  bForm.type = 'button';
+  bForm.className = 'eas-btn';
+  bForm.textContent = 'Obrir el formulari';
+  acc.appendChild(bForm);
+
+  var bCopia = document.createElement('button');
+  bCopia.type = 'button';
+  bCopia.className = 'eas-btn eas-sec';
+  bCopia.textContent = 'Copiar el codi';
+  acc.appendChild(bCopia);
+
+  var bTanca = document.createElement('button');
+  bTanca.type = 'button';
+  bTanca.className = 'eas-btn eas-sec';
+  bTanca.textContent = 'Tornar a l\u2019activitat';
+  acc.appendChild(bTanca);
+
+  bCopia.addEventListener('click', function(){
+    tc.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){}
+    if (navigator.clipboard && !ok){
+      navigator.clipboard.writeText(tc.value).then(function(){
+        bCopia.textContent = 'Codi copiat';
+      });
+      return;
+    }
+    bCopia.textContent = ok ? 'Codi copiat' : 'Selecciona\u2019l i copia\u2019l';
+  });
+
+  bTanca.addEventListener('click', tanca);
+
+  if (configurat()){
+    bForm.addEventListener('click', function(){
+      desaGrup(ig.value.trim());
+      var u = 'https://docs.google.com/forms/d/e/' + CFG.FORM_ID + '/viewform?usp=pp_url'
+        + '&' + CFG.ENTRY.activitat + '=' + encodeURIComponent(CFG.APP_NOM)
+        + '&' + CFG.ENTRY.grup      + '=' + encodeURIComponent(ig.value.trim())
+        + '&' + CFG.ENTRY.resum     + '=' + encodeURIComponent(dades.resum)
+        + '&' + CFG.ENTRY.codi      + '=' + encodeURIComponent(tc.value);
+      window.open(u, '_blank', 'noopener');
+    });
+  } else {
+    bForm.disabled = true;
+    bForm.style.opacity = '.5';
+    bForm.style.cursor = 'not-allowed';
+    var avis = document.createElement('div');
+    avis.className = 'eas-avis';
+    avis.textContent = 'El formulari encara no està configurat. Copia el codi i '
+      + 'enganxa\u2019l a la tasca del Classroom.';
+    caixa.insertBefore(avis, acc);
+  }
+
+  var peu = document.createElement('p');
+  peu.className = 'eas-peu';
+  peu.id = 'eas-peu';
+  peu.textContent = 'El codi conté les dades de la sessió amb un dígit de control. '
+    + 'Si es modifica el resum al formulari, el codi deixa de quadrar-hi.';
+  caixa.appendChild(peu);
+
+  fons.addEventListener('click', function(e){ if (e.target === fons) tanca(); });
+  document.addEventListener('keydown', function esc(e){
+    if (e.key === 'Escape'){ tanca(); document.removeEventListener('keydown', esc); }
+  });
+
+  document.body.appendChild(fons);
+  bForm.focus();
+}
+
+/* ─── 6. BOTÓ ────────────────────────────────────────────────────── */
+function posaBoto(){
+  injectaCSS();
+  if (document.getElementById('eas-boto')) return;
+  var b = document.createElement('button');
+  b.id = 'eas-boto';
+  b.type = 'button';
+  b.className = 'eas-btn';
+  b.textContent = CFG.ETIQUETA;
+  b.addEventListener('click', obre);
+  var ancla = CFG.ANCLA ? document.querySelector(CFG.ANCLA) : null;
+  if (ancla){
+    ancla.appendChild(b);
+  } else {
+    b.className += ' eas-flota';
+    document.body.appendChild(b);
+  }
+}
+
+/* ─── 7. ARRENCADA ───────────────────────────────────────────────── */
+function arrencaEnviament(){
+  posaBoto();
+  /* L'ajust propi de cada aplicaci\u00f3 va en un setTimeout(0) perqu\u00e8
+     s'executi despr\u00e9s de tots els altres gestors de DOMContentLoaded
+     de la p\u00e0gina i no li'l sobreescriguin. */
+  setTimeout(function(){ try { /* res a inicialitzar */ } catch(e){} }, 0);
+}
+if (document.readyState === 'loading')
+  document.addEventListener('DOMContentLoaded', arrencaEnviament);
+else arrencaEnviament();
+
+})();
+</script>
+   
 </body>
 </html>
